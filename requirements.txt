@@ -1,0 +1,2 @@
+cic-eth-registry~=0.6.9
+celery~=4.4.7

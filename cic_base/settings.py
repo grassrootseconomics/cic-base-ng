@@ -2,7 +2,6 @@
 import logging
 
 # external imports
-import cic_eth.cli
 from chainlib.chain import ChainSpec
 from chainlib.eth.address import is_checksum_address
 from cic_eth.registry import (
@@ -14,6 +13,7 @@ from cic_eth_registry import CICRegistry
 from cic_eth_registry.error import UnknownContractError
 
 # legacy imports
+import cic_base.cli
 from cic_base.legacy.db import SessionBase
 
 logg = logging.getLogger(__name__)
@@ -30,12 +30,12 @@ class CICSettings:
     def process_common(self, config):
         self.o['CHAIN_SPEC'] = ChainSpec.from_chain_str(config.get('CHAIN_SPEC'))
         
-        rpc = cic_eth.cli.RPC.from_config(config)
+        rpc = cic_base.cli.RPC.from_config(config)
         self.o['RPC'] = rpc.get_default()
 
 
     def process_celery(self, config):
-        cic_eth.cli.CeleryApp.from_config(config)
+        cic_base.cli.CeleryApp.from_config(config)
         self.o['CELERY_QUEUE'] = config.get('CELERY_QUEUE')
 
 

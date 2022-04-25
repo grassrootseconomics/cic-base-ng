@@ -57,6 +57,9 @@ class Config(BaseConfig):
         if local_arg_flags & CICFlag.SYNCER:
             local_args_override['SYNCER_OFFSET'] = getattr(args, 'offset')
             local_args_override['SYNCER_NO_HISTORY'] = getattr(args, 'no_history')
+            local_args_override['SYNCER_BACKEND'] = getattr(args, 'backend')
+            local_args_override['SYNCER_SESSION_ID'] = getattr(args, 'session_id')
+
 
         config.dict_override(local_args_override, 'local cli args')
 

@@ -33,7 +33,11 @@ class ArgumentParser(BaseArgumentParser):
             self.add_argument('--server-workers', type=int, default=1, help='The number of worker processes for handling requests')
             self.add_argument('--server-config', type=str, default=None, help='Gunicorn config file, or python module. It will override all other server args. (see https://docs.gunicorn.org/en/19.2.1/settings.html#config-file)')
         if local_arg_flags & CICFlag.SYNCER:
-            self.add_argument('--offset', type=int, help='Start block height for initial history sync')
-            self.add_argument('--no-history', action='store_true', dest='no_history', help='Skip initial history sync')
+            self.add_argument('--session-id', dest='session_id', type=str, help='Session id to use for state store')
+            self.add_argument('--sync-until', dest='until', type=int, default=0, help='Stop sync at the given block. 0 = infinite sync')
+            self.add_argument('--sync-backend', dest='backend', type=str, help='State store backend')
+            self.add_argument('--list-sync-backends', dest='list_backends', action='store_true', help='List built-in store backends')
+            self.add_argument('--sync-offset', dest='offset', type=int, help='Start block height for initial history sync')
+            self.add_argument('--sync-no-history', action='store_true', dest='no_history', help='Skip initial history sync')
         if local_arg_flags & CICFlag.CHAIN:
             self.add_argument('-r', '--registry-address', type=str, dest='registry_address', help='CIC registry contract address')

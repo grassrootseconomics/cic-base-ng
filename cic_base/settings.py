@@ -15,102 +15,110 @@ from cic_eth_registry.error import UnknownContractError
 # legacy imports
 import cic_base.cli
 from cic_base.legacy.db import SessionBase
+from cic_base.error import InitializationError
 
 logg = logging.getLogger(__name__)
 
 
-class CICSettings:
-
-    def __init__(self):
-        self.o = {}
-        self.get = self.o.get
-        self.registry = None
+def __init__(settings):
+    settings.o = {}
+    settings.get = settings.o.get
+    settings.registry = None
 
 
-    def process_common(self, config):
-        self.o['CHAIN_SPEC'] = ChainSpec.from_chain_str(config.get('CHAIN_SPEC'))
-        
-        rpc = cic_base.cli.RPC.from_config(config)
-        self.o['RPC'] = rpc.get_default()
+def process_common(settings, config):
+    chain_spec = ChainSpec.from_chain_str(config.get('CHAIN_SPEC'))
+    settings.o['CHAIN_SPEC'] = chain_spec
+    
+    rpc = cic_base.cli.RPC.from_config(config)
+    conn = rpc.get_default()
+    settings.set('RPC', conn)
+
+    return settings
 
 
-    def process_celery(self, config):
-        cic_base.cli.CeleryApp.from_config(config)
-        self.o['CELERY_QUEUE'] = config.get('CELERY_QUEUE')
+def process_celery(settings, config):
+    cic_base.cli.CeleryApp.from_config(config)
+    settings.set('CELERY_QUEUE', config.get('CELERY_QUEUE'))
+
+    return settings
 
 
-    def process_database(self, config):
-        scheme = config.get('DATABASE_ENGINE')
-        if config.get('DATABASE_DRIVER') != None:
-            scheme += '+{}'.format(config.get('DATABASE_DRIVER'))
+def process_database(settings, config):
+    scheme = config.get('DATABASE_ENGINE')
+    if config.get('DATABASE_DRIVER') != None:
+        scheme += '+{}'.format(config.get('DATABASE_DRIVER'))
 
-        dsn = ''
-        dsn_out = ''
-        if config.get('DATABASE_ENGINE') == 'sqlite':
-            dsn = '{}:///{}'.format(
-                    scheme,
-                    config.get('DATABASE_NAME'),    
-                )
-            dsn_out = dsn
+    dsn = ''
+    dsn_out = ''
+    if config.get('DATABASE_ENGINE') == 'sqlite':
+        dsn = '{}:///{}'.format(
+                scheme,
+                config.get('DATABASE_NAME'),    
+            )
+        dsn_out = dsn
 
+    else:
+        dsn = '{}://{}:{}@{}:{}/{}'.format(
+                scheme,
+                config.get('DATABASE_USER'),
+                config.get('DATABASE_PASSWORD'),
+                config.get('DATABASE_HOST'),
+                config.get('DATABASE_PORT'),
+                config.get('DATABASE_NAME'),    
+            )
+        dsn_out = '{}://{}:{}@{}:{}/{}'.format(
+                scheme,
+                config.get('DATABASE_USER'),
+                '***',
+                config.get('DATABASE_HOST'),
+                config.get('DATABASE_PORT'),
+                config.get('DATABASE_NAME'),    
+            )
+
+    logg.debug('parsed dsn from config: {}'.format(dsn_out))
+    pool_size = int(config.get('DATABASE_POOL_SIZE'))
+    SessionBase.connect(dsn, pool_size=pool_size, debug=config.true('DATABASE_DEBUG'))
+
+    return settings
+
+
+def process_trusted_addresses(settings, config):
+    trusted_addresses_src = config.get('CIC_TRUST_ADDRESS')
+    if trusted_addresses_src == None:
+        raise InitializationError('At least one trusted address must be declared in CIC_TRUST_ADDRESS')
+
+    trusted_addresses = trusted_addresses_src.split(',')
+    for i, address in enumerate(trusted_addresses):
+        if not config.get('_UNSAFE'):
+            if not is_checksum_address(address):
+                raise ValueError('address {} at position {} is not a valid checksum address'.format(address, i))
         else:
-            dsn = '{}://{}:{}@{}:{}/{}'.format(
-                    scheme,
-                    config.get('DATABASE_USER'),
-                    config.get('DATABASE_PASSWORD'),
-                    config.get('DATABASE_HOST'),
-                    config.get('DATABASE_PORT'),
-                    config.get('DATABASE_NAME'),    
-                )
-            dsn_out = '{}://{}:{}@{}:{}/{}'.format(
-                    scheme,
-                    config.get('DATABASE_USER'),
-                    '***',
-                    config.get('DATABASE_HOST'),
-                    config.get('DATABASE_PORT'),
-                    config.get('DATABASE_NAME'),    
-                )
-
-        logg.debug('parsed dsn from config: {}'.format(dsn_out))
-        pool_size = int(config.get('DATABASE_POOL_SIZE'))
-        SessionBase.connect(dsn, pool_size=pool_size, debug=config.true('DATABASE_DEBUG'))
+            trusted_addresses[i] = to_checksum_address(address)
+        logg.info('using trusted address {}'.format(address))
 
 
-    def process_trusted_addresses(self, config):
-        trusted_addresses_src = config.get('CIC_TRUST_ADDRESS')
-        if trusted_addresses_src == None:
-            raise InitializationError('At least one trusted address must be declared in CIC_TRUST_ADDRESS')
+    settings.set('TRUSTED_ADDRESSES', trusted_addresses)
 
-        trusted_addresses = trusted_addresses_src.split(',')
-        for i, address in enumerate(trusted_addresses):
-            if not config.get('_UNSAFE'):
-                if not is_checksum_address(address):
-                    raise ValueError('address {} at position {} is not a valid checksum address'.format(address, i))
-            else:
-                trusted_addresses[i] = to_checksum_address(address)
-            logg.info('using trusted address {}'.format(address))
+    return settings
 
 
-        self.o['TRUSTED_ADDRESSES'] = trusted_addresses
+def process_registry(settings, config):
+    registry = None
+    chain_spec = settings.get('CHAIN_SPEC')
+    rpc = settings.get('RPC')
+    registry_address = config.get('CIC_REGISTRY_ADDRESS')
 
+    try:
+        registry = connect_registry(rpc, chain_spec, registry_address)
+    except UnknownContractError as e:
+        pass
+    if registry == None:
+        raise InitializationError('Registry contract connection failed for {}: {}'.format(config.get('CIC_REGISTRY_ADDRESS'), e))
+    connect_declarator(rpc, chain_spec, settings.get('TRUSTED_ADDRESSES'))
+    connect_token_registry(rpc, chain_spec)
 
-    def process_registry(self, config):
-        registry = None
-        try:
-            registry = connect_registry(self.o['RPC'], self.o['CHAIN_SPEC'], config.get('CIC_REGISTRY_ADDRESS'))
-        except UnknownContractError as e:
-            pass
-        if registry == None:
-            raise InitializationError('Registry contract connection failed for {}: {}'.format(config.get('CIC_REGISTRY_ADDRESS'), e))
-        connect_declarator(self.o['RPC'], self.o['CHAIN_SPEC'], self.o['TRUSTED_ADDRESSES'])
-        connect_token_registry(self.o['RPC'], self.o['CHAIN_SPEC'])
+    registry = CICRegistry(chain_spec, rpc)
+    settings.set('CIC_REGISTRY', registry)
 
-        self.o['CIC_REGISTRY'] = CICRegistry(self.o['CHAIN_SPEC'], self.o['RPC'])
-
-
-    def process(self, config):
-        self.process_common(config)
-        self.process_database(config)
-        self.process_trusted_addresses(config)
-        self.process_registry(config)
-        self.process_celery(config)
+    return settings

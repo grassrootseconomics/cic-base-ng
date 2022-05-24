@@ -1,1 +1,1 @@
-from .settings import CICSettings
+#from .settings import CICSettings

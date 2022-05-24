@@ -1,2 +1,4 @@
+- 0.14.0
+	* Make settings processing stateless
 - 0.13.0
 	* Receive settings from cic-stack/cic-eth 0.12.10

@@ -1,4 +1,5 @@
 cic-eth-registry~=0.6.9
 celery~=4.4.7
-chainlib-eth~=0.3.0
+chainlib-eth~=0.1.0
 urlybird~=0.0.2
+confini==0.6.0
